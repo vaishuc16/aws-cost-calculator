@@ -1,0 +1,42 @@
+import json, os, boto3
+from datetime import date, timedelta
+
+ce = boto3.client("ce", region_name="us-east-1")
+s3 = boto3.client("s3")
+BUCKET = os.environ["BUCKET"]
+
+def lambda_handler(event, context):
+    end = date.today()
+    start = end - timedelta(days=7)
+
+    resp = ce.get_cost_and_usage(
+        TimePeriod={"Start": start.isoformat(), "End": end.isoformat()},
+        Granularity="DAILY",
+        Metrics=["UnblendedCost"],
+        GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}],
+    )
+
+    daily, by_service = [], {}
+    for day in resp["ResultsByTime"]:
+        total = 0.0
+        for g in day["Groups"]:
+            name = g["Keys"][0]
+            amount = float(g["Metrics"]["UnblendedCost"]["Amount"])
+            by_service[name] = by_service.get(name, 0.0) + amount
+            total += amount
+        daily.append({"date": day["TimePeriod"]["Start"], "cost": round(total, 4)})
+
+    report = {
+        "period": f"{start} to {end}",
+        "total": round(sum(d["cost"] for d in daily), 4),
+        "daily": daily,
+        "by_service": {k: round(v, 4) for k, v in
+                       sorted(by_service.items(), key=lambda x: x[1], reverse=True)},
+    }
+
+    body = json.dumps(report)
+    s3.put_object(Bucket=BUCKET, Key="data.json", Body=body,
+                  ContentType="application/json", CacheControl="no-cache")
+    s3.put_object(Bucket=BUCKET, Key=f"reports/weekly-{end}.json", Body=body,
+                  ContentType="application/json")
+    return {"total": report["total"]}
