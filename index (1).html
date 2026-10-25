@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Cloud Cost Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 700px; margin: 30px auto; }
+    .bar { background: #7b2ff7; color: #fff; padding: 3px 6px; margin: 3px 0; white-space: nowrap; }
+    td { padding: 4px 12px; }
+  </style>
+</head>
+<body>
+  <h1>Cloud Cost Dashboard</h1>
+  <h2 id="total">Loading...</h2>
+  <h3>Daily cost (USD)</h3>
+  <div id="daily"></div>
+  <h3>Cost by service (USD)</h3>
+  <table id="services"></table>
+  <script>
+    fetch("data.json?t=" + Date.now())
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById("total").textContent =
+          d.period + ": $" + d.total.toFixed(2);
+        const max = Math.max(...d.daily.map(x => x.cost), 0.01);
+        d.daily.forEach(x => {
+          const bar = document.createElement("div");
+          bar.className = "bar";
+          bar.style.width = Math.max((x.cost / max) * 100, 8) + "%";
+          bar.textContent = x.date + "  $" + x.cost.toFixed(2);
+          document.getElementById("daily").appendChild(bar);
+        });
+        Object.entries(d.by_service).forEach(([name, cost]) => {
+          const row = document.getElementById("services").insertRow();
+          row.insertCell().textContent = name;
+          row.insertCell().textContent = "$" + cost.toFixed(2);
+        });
+      })
+      .catch(() => {
+        document.getElementById("total").textContent =
+          "No data yet. Run the Lambda first.";
+      });
+  </script>
+</body>
+</html>
